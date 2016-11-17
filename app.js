@@ -1,6 +1,7 @@
 var express = require('express'),
     app = express(),
-    MetaInspector = require('node-metainspector'),
+    cheerio = require('cheerio'),
+    request = require('request'),
     port = process.env.PORT || 3000,
     bodyParser = require('body-parser'),
     router = express.Router();
@@ -10,26 +11,33 @@ app.use(bodyParser.json());
 
 router.route('/urls')
       .post(function (req, res) {
-          var response,
-              url = req.body.url,
-              client = new MetaInspector(url, {timeout: 5000});
+          var pageInfo = {},
+              url = req.body.url;
 
-          client.on("fetch", function () {
-              console.log(client.title);
-              console.log(client.ogTitle);
-              console.log(client.description);
-              console.log(client.ogDescription);
-              console.log(client.image);
-              console.log(client.links);
+          request(url, function (error, response, html) {
+              if (!error && response.statusCode == 200) {
+                  var $ = cheerio.load(html),
+                      $head = $('head');
 
+                  pageInfo.title = $head.find('meta[name="og:title"]').attr('content');
+                  if (!pageInfo.title) {
+                      pageInfo.title = $head.find('title').text();
+                  }
 
-              res.json({reg: 'post ' + new Date()});
+                  pageInfo.description = $head.find('meta[name="og:description"]').attr('content');
+                  if (!pageInfo.description) {
+                      pageInfo.description = $head.find('meta[name="description"]').attr('content');
+                  }
+
+                  pageInfo.favicon = $head.find('link[rel="shortcut icon"]').attr('href');
+                  pageInfo.image = $head.find('meta[property="og:image"]').attr('content');
+
+                  console.log(pageInfo);
+                  res.json({pageInfo: pageInfo});
+              } else {
+                  res.json({error: 'Can not get info about page'});
+              }
           });
-
-          client.on("error", function (err) {
-              res.json({error: 'Can not get info about page', detail: err});
-          });
-          client.fetch();
       });
 
 app.use('/api', router);
